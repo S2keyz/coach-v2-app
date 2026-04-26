@@ -16,7 +16,7 @@ const ST = {
   set: (k, v) => { try { localStorage.setItem("cm2_" + k, JSON.stringify(v)); } catch {} },
 };
 
-const TARGET = new Date("2025-06-21");
+const TARGET = new Date("2026-06-21");
 const daysLeft = () => Math.max(0, Math.ceil((TARGET - new Date()) / 864e5));
 const weeksLeft = () => Math.max(0.1, daysLeft() / 7);
 const dow = () => new Date().getDay();
@@ -225,6 +225,56 @@ const PREP = (pdc) => ({
 const getWeek = () => { const s = ST.get("start") || Date.now(); return Math.floor((Date.now() - s) / (7 * 864e5)) + 1; };
 const isDeload = () => getWeek() % 4 === 0;
 
+// ─── SPARKLINE ───
+const Sparkline = ({ data, color, height = 48 }) => {
+  if (data.length < 2) return null;
+  const vals = data.map(d => d.w);
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const range = max - min || 1;
+  const w = 300, h = height, pad = 4;
+  const pts = vals.map((v, i) => {
+    const x = pad + (i / (vals.length - 1)) * (w - pad * 2);
+    const y = h - pad - ((v - min) / range) * (h - pad * 2);
+    return `${x},${y}`;
+  }).join(" ");
+  const last = pts.split(" ").at(-1).split(",");
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height, display: "block", overflow: "visible" }}>
+      <defs>
+        <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <polygon points={`${pad},${h} ${pts} ${w - pad},${h}`} fill="url(#sg)" />
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={last[0]} cy={last[1]} r="3.5" fill={color} />
+    </svg>
+  );
+};
+
+// ─── SLEEP BARS ───
+const SleepBars = ({ data }) => {
+  const last7 = data.slice(-7);
+  if (last7.length === 0) return <div style={{ fontSize: 11, color: "#56565e" }}>Aucune donnée</div>;
+  return (
+    <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 36 }}>
+      {last7.map((s, i) => {
+        const pct = Math.min(1, s.h / 9);
+        const col = s.h >= 7.5 ? "#32d74b" : s.h >= 6 ? "#ff9f0a" : "#ff3b30";
+        return (
+          <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+            <div style={{ width: "100%", height: 28, display: "flex", alignItems: "flex-end" }}>
+              <div style={{ width: "100%", height: `${pct * 100}%`, background: col, borderRadius: "3px 3px 0 0", minHeight: 3 }} />
+            </div>
+            <div style={{ fontSize: 8, color: "#56565e" }}>{s.h}h</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 // ─── TIMER ───
 const Timer = ({ sec, label }) => {
   const [left, setLeft] = useState(sec);
@@ -323,7 +373,7 @@ export default function App() {
     const ns = [...slp, { d: new Date().toISOString(), h: v }];
     setSlp(ns); setInp(""); setModal(null); save("sl", ns);
   };
-  const addH2O = () => { const n = water + 1; setWater(n); save("h2o", { d: new Date().toISOString(), v: n }); };
+  const addH2O = (delta = 1) => { const n = Math.max(0, water + delta); setWater(n); save("h2o", { d: new Date().toISOString(), v: n }); };
   const togC = (t) => {
     const k = new Date().toISOString().split("T")[0];
     const u = { ...comp, [k]: { ...comp[k], [t]: !(comp[k] || {})[t] } };
@@ -411,14 +461,13 @@ export default function App() {
           <div style={ts}>Compliance</div>
           <div style={{ fontSize: 11, color: C.accent }}>🔥 {streak()}j</div>
         </div>
-        <div style={{ display: "flex", gap: 6 }}>
+        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
           {[
             { k: "m", ic: "🥗", lb: "Menu", on: tC.m },
             { k: "t", ic: "⚔️", lb: "Séance", on: tC.t },
-            { k: "h", ic: "💧", lb: `Eau ${water}/8`, on: water >= 8 },
             { k: "s", ic: "😴", lb: "Sommeil", on: slp.some(s => isToday(s.d)) },
           ].map(x => (
-            <button key={x.k} onClick={() => x.k === "h" ? addH2O() : x.k === "s" ? (setInp(""), setModal("sl")) : togC(x.k)} style={{
+            <button key={x.k} onClick={() => x.k === "s" ? (setInp(""), setModal("sl")) : togC(x.k)} style={{
               flex: 1, padding: "8px 2px", borderRadius: 9, fontSize: 9, fontWeight: 600, cursor: "pointer", textAlign: "center",
               background: x.on ? C.accentDim : C.surface, border: `1px solid ${x.on ? C.accent : C.border}`, color: x.on ? C.accent : C.dim,
             }}>
@@ -426,6 +475,21 @@ export default function App() {
               <div style={{ marginTop: 3 }}>{x.lb}</div>
             </button>
           ))}
+        </div>
+        <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 2, color: C.dim, textTransform: "uppercase" }}>💧 Hydratation</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: water >= 8 ? C.green : C.text }}>{water}/8 verres</div>
+          </div>
+          <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} style={{ flex: 1, height: 6, borderRadius: 3, background: i < water ? C.blue : C.border, transition: "background .2s" }} />
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={() => addH2O(-1)} style={{ ...bs, flex: 1, background: "none", color: C.dim, border: `1px solid ${C.border}`, fontSize: 14 }}>−</button>
+            <button onClick={() => addH2O(1)} style={{ ...bs, flex: 2, background: water >= 8 ? C.accentDim : C.surface, color: water >= 8 ? C.accent : C.text, border: `1px solid ${water >= 8 ? C.accent : C.border}` }}>+ 1 verre</button>
+          </div>
         </div>
       </div>
 
@@ -448,18 +512,45 @@ export default function App() {
       </div>}
 
       {wLog.length > 0 && <div style={cs}>
-        <div style={ts}>Pesées</div>
-        {[...wLog].reverse().slice(0, 5).map((e, i) => (
-          <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: `1px solid ${C.border}`, fontSize: 12 }}>
-            <span style={{ color: C.dim }}>{fmtD(e.d)}</span>
-            <span style={{ fontWeight: 600 }}>{e.w} kg</span>
+        <div style={ts}>Courbe de poids</div>
+        {wLog.length >= 2 && <Sparkline data={wLog} color={C.accent} />}
+        <div style={{ marginTop: 10 }}>
+          {[...wLog].reverse().slice(0, 5).map((e, i, arr) => {
+            const prev = arr[i + 1];
+            const diff = prev ? (e.w - prev.w).toFixed(1) : null;
+            return (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: `1px solid ${C.border}`, fontSize: 12 }}>
+                <span style={{ color: C.dim }}>{fmtD(e.d)}</span>
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  {diff !== null && <span style={{ fontSize: 10, color: parseFloat(diff) < 0 ? C.green : parseFloat(diff) > 0 ? C.red : C.dim }}>{parseFloat(diff) > 0 ? `+${diff}` : diff} kg</span>}
+                  <span style={{ fontWeight: 600 }}>{e.w} kg</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>}
+
+      {slp.length > 0 && <div style={cs}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <div style={ts}>Sommeil (7 dernières nuits)</div>
+          <div style={{ fontSize: 11, color: C.mid }}>
+            moy. {(slp.slice(-7).reduce((a, s) => a + s.h, 0) / Math.min(7, slp.length)).toFixed(1)}h
           </div>
-        ))}
+        </div>
+        <SleepBars data={slp} />
       </div>}
 
       <div style={{ fontSize: 10, color: C.dim, textAlign: "center", padding: "10px 14px", lineHeight: 1.5, borderTop: `1px solid ${C.border}` }}>
         💡 Le poids fluctue ±1.5kg/jour. Fie-toi à la moyenne 7j.
       </div>
+      <button onClick={() => {
+        const data = { poids: wLog, tailleDeCeinture: waist, sommeil: slp, exportDate: new Date().toISOString() };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "coach-data.json"; a.click();
+      }} style={{ ...bs, width: "100%", background: "none", color: C.dim, border: `1px solid ${C.border}`, marginBottom: 10, fontSize: 9 }}>
+        ⬇️ Exporter mes données
+      </button>
     </div>
   );
 
