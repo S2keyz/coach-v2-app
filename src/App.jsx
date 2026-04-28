@@ -1,9 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 
-// ═══════════════════════════════════════════
-// COACH MILITAIRE V2 — 44+ CORRECTIONS
-// ═══════════════════════════════════════════
-
 const C = {
   bg: "#08080a", card: "#111114", border: "#1c1c22", surface: "#1c1c1e",
   accent: "#c8ff00", accentDim: "#2a3300", accentSoft: "#c8ff0018",
@@ -16,14 +12,12 @@ const ST = {
   set: (k, v) => { try { localStorage.setItem("cm2_" + k, JSON.stringify(v)); } catch {} },
 };
 
-const TARGET = new Date("2026-06-21");
-const daysLeft = () => Math.max(0, Math.ceil((TARGET - new Date()) / 864e5));
-const weeksLeft = () => Math.max(0.1, daysLeft() / 7);
 const dow = () => new Date().getDay();
 const dayName = () => ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"][dow()];
 const todayStr = () => new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
 const fmtD = (d) => new Date(d).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 const isToday = (d) => new Date(d).toDateString() === new Date().toDateString();
+const todayKey = () => new Date().toISOString().split("T")[0];
 
 const SCHED = {
   1: { type: "t", ci: 0, lb: "Jour A — Full Body" },
@@ -109,13 +103,11 @@ const genMeal = (off, pdc) => {
   const w = tr ? WHT : WHO;
   const pool = tr ? CF : CL;
   const lc = pk(pool, r), dc = pk(pool, r, lc.ix);
-
   const fixK = lp.it.k + dp.it.k + w.k + fx.it.k + 135 + lv.it.k + dv.it.k;
   const remK = m.cal - fixK;
   const lRat = tr ? 0.6 : 0.5;
   const lK = Math.max(100, Math.round(remK * lRat));
   const dK = Math.max(80, remK - lK);
-
   const sc = (it, kcal) => {
     const g = Math.round((kcal / it.per.k) * 100);
     return { n: it.n, g, p: Math.round(it.per.p * g / 100), l: Math.round(it.per.l * g / 100), c: Math.round(it.per.c * g / 100), k: Math.round(it.per.k * g / 100), fb: Math.round(it.per.fb * g / 100) };
@@ -123,13 +115,10 @@ const genMeal = (off, pdc) => {
   const lcS = sc(lc.it, lK), dcS = sc(dc.it, dK);
   const o1 = { n: "Huile d'olive", g: 10, p: 0, l: 10, c: 0, k: 90, fb: 0 };
   const o2 = { n: "Huile d'olive", g: 5, p: 0, l: 5, c: 0, k: 45, fb: 0 };
-
   const sm = (its) => its.reduce((a, i) => ({ p: a.p + i.p, l: a.l + i.l, c: a.c + i.c, k: a.k + i.k, fb: a.fb + i.fb }), { p: 0, l: 0, c: 0, k: 0, fb: 0 });
-
   const li = [lp.it, lcS, lv.it, o1].map(i => ({ n: i.n, g: i.g, p: i.p, l: i.l, c: i.c, k: i.k, fb: i.fb }));
   const di = [dp.it, dcS, dv.it, o2, fx.it].map(i => ({ n: i.n, g: i.g || 0, p: i.p, l: i.l, c: i.c, k: i.k, fb: i.fb }));
   const ci = [w].map(i => ({ n: i.n, g: 0, p: i.p, l: i.l, c: i.c, k: i.k, fb: i.fb }));
-
   return {
     lunch: { lb: tr ? "DÉJEUNER (training day)" : "DÉJEUNER", its: li, tot: sm(li) },
     dinner: { lb: "DÎNER", its: di, tot: sm(di) },
@@ -226,9 +215,9 @@ const getWeek = () => { const s = ST.get("start") || Date.now(); return Math.flo
 const isDeload = () => getWeek() % 4 === 0;
 
 // ─── SPARKLINE ───
-const Sparkline = ({ data, color, height = 48 }) => {
+const Sparkline = ({ data, color, height = 52, keyY = "w" }) => {
   if (data.length < 2) return null;
-  const vals = data.map(d => d.w);
+  const vals = data.map(d => d[keyY]);
   const min = Math.min(...vals), max = Math.max(...vals);
   const range = max - min || 1;
   const w = 300, h = height, pad = 4;
@@ -241,12 +230,12 @@ const Sparkline = ({ data, color, height = 48 }) => {
   return (
     <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height, display: "block", overflow: "visible" }}>
       <defs>
-        <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+        <linearGradient id={`sg-${color.replace("#","")}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.2" />
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
       </defs>
-      <polygon points={`${pad},${h} ${pts} ${w - pad},${h}`} fill="url(#sg)" />
+      <polygon points={`${pad},${h} ${pts} ${w - pad},${h}`} fill={`url(#sg-${color.replace("#","")})`} />
       <polyline points={pts} fill="none" stroke={color} strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
       <circle cx={last[0]} cy={last[1]} r="3.5" fill={color} />
     </svg>
@@ -256,18 +245,18 @@ const Sparkline = ({ data, color, height = 48 }) => {
 // ─── SLEEP BARS ───
 const SleepBars = ({ data }) => {
   const last7 = data.slice(-7);
-  if (last7.length === 0) return <div style={{ fontSize: 11, color: "#56565e" }}>Aucune donnée</div>;
+  if (last7.length === 0) return <div style={{ fontSize: 11, color: C.dim }}>Aucune donnée</div>;
   return (
-    <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 36 }}>
+    <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 40 }}>
       {last7.map((s, i) => {
         const pct = Math.min(1, s.h / 9);
-        const col = s.h >= 7.5 ? "#32d74b" : s.h >= 6 ? "#ff9f0a" : "#ff3b30";
+        const col = s.h >= 7.5 ? C.green : s.h >= 6 ? C.orange : C.red;
         return (
           <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-            <div style={{ width: "100%", height: 28, display: "flex", alignItems: "flex-end" }}>
+            <div style={{ width: "100%", height: 30, display: "flex", alignItems: "flex-end" }}>
               <div style={{ width: "100%", height: `${pct * 100}%`, background: col, borderRadius: "3px 3px 0 0", minHeight: 3 }} />
             </div>
-            <div style={{ fontSize: 8, color: "#56565e" }}>{s.h}h</div>
+            <div style={{ fontSize: 8, color: C.dim }}>{s.h}h</div>
           </div>
         );
       })}
@@ -282,7 +271,7 @@ const Timer = ({ sec, label }) => {
   const ref = useRef();
   useEffect(() => {
     if (on && left > 0) ref.current = setTimeout(() => setLeft(left - 1), 1000);
-    else if (left === 0) setOn(false);
+    else if (left === 0) { setOn(false); if (Notification.permission === "granted") new Notification("Coach Militaire", { body: `${label} terminé !`, icon: "/icon-192.png" }); }
     return () => clearTimeout(ref.current);
   }, [on, left]);
   const mm = String(Math.floor(left / 60)).padStart(2, "0");
@@ -295,7 +284,7 @@ const Timer = ({ sec, label }) => {
         <div style={{ width: `${((sec - left) / sec) * 100}%`, height: "100%", background: left < 6 ? C.red : C.accent, transition: "width 1s linear" }} />
       </div>
       <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
-        <button onClick={() => setOn(!on)} style={{ ...bs, width: 90, background: on ? C.red : C.accent, color: "#000" }}>{on ? "PAUSE" : left < sec ? "GO" : "GO"}</button>
+        <button onClick={() => setOn(!on)} style={{ ...bs, width: 90, background: on ? C.red : C.accent, color: "#000" }}>{on ? "PAUSE" : "GO"}</button>
         <button onClick={() => { setOn(false); setLeft(sec); }} style={{ ...bs, width: 70, background: "none", color: C.mid, border: `1px solid ${C.border}` }}>RESET</button>
       </div>
     </div>
@@ -309,6 +298,7 @@ const ps = (col) => ({ flex: 1, textAlign: "center", padding: "7px 2px", borderR
 
 // ─── APP ───
 export default function App() {
+  const [cfg, setCfg] = useState(() => ST.get("cfg") || { sw: 111, gw: 93, gd: "2026-06-21", ht: 180, notif: false });
   const [tab, setTab] = useState("board");
   const [wt, setWt] = useState(() => ST.get("wt") || 111);
   const [wLog, setWLog] = useState(() => ST.get("wl") || []);
@@ -322,22 +312,53 @@ export default function App() {
   const [tI, setTI] = useState(() => { const s = SCHED[dow()]; return s?.type === "t" ? s.ci : 0; });
   const [alt, setAlt] = useState(false);
   const [sub, setSub] = useState("circuit");
+  const [jnl, setJnl] = useState(() => ST.get("jnl") || {});
+  const [tlog, setTlog] = useState(() => ST.get("tlog") || []);
+  const [prepDone, setPrepDone] = useState(() => {
+    const pd = ST.get("prepd");
+    return pd?.d === todayKey() ? pd.v : {};
+  });
+  const [cfgEdit, setCfgEdit] = useState(cfg);
+  const [jnlInp, setJnlInp] = useState("");
+
+  const TARGET = new Date(cfg.gd);
+  const S = cfg.sw;
+  const G = cfg.gw;
+  const daysLeft = () => Math.max(0, Math.ceil((TARGET - new Date()) / 864e5));
+  const weeksLeft = () => Math.max(0.1, daysLeft() / 7);
 
   useEffect(() => { if (!ST.get("start")) ST.set("start", Date.now()); }, []);
 
-  const S = 111, G = 93;
+  // Notifications au chargement
+  useEffect(() => {
+    if (cfg.notif && typeof Notification !== "undefined" && Notification.permission === "granted") {
+      const h = new Date().getHours();
+      const todayLogged = wLog.some(e => isToday(e.d));
+      if (h >= 7 && h < 10 && !todayLogged) {
+        new Notification("Coach Militaire ⚖️", { body: "Pesée du matin ! À jeun, après toilettes.", icon: "/icon-192.png" });
+      }
+      if (h >= 14 && h < 15 && water < 4) {
+        new Notification("Coach Militaire 💧", { body: `Hydratation : seulement ${water}/8 verres. Bois !`, icon: "/icon-192.png" });
+      }
+    }
+  }, []);
+
   const tr = isTDay();
   const mac = calcMacros(wt, tr);
-  const lost = S - wt, rem = wt - G;
+  const lost = S - wt;
+  const rem = wt - G;
   const prog = Math.min(100, Math.max(0, (lost / (S - G)) * 100));
   const dl = daysLeft(), wks = weeksLeft();
   const rate = rem > 0 ? (rem / wks).toFixed(1) : 0;
   const deload = isDeload(), wkN = getWeek();
+  const imc = cfg.ht > 0 ? (wt / ((cfg.ht / 100) ** 2)).toFixed(1) : null;
+  const imcLabel = imc ? (parseFloat(imc) < 18.5 ? "Maigreur" : parseFloat(imc) < 25 ? "Normal" : parseFloat(imc) < 30 ? "Surpoids" : "Obésité") : null;
+  const imcColor = imc ? (parseFloat(imc) < 25 ? C.green : parseFloat(imc) < 30 ? C.orange : C.red) : null;
 
   const avg7 = wLog.length >= 2 ? (wLog.slice(-7).reduce((a, e) => a + e.w, 0) / Math.min(7, wLog.length)).toFixed(1) : null;
 
   const pred = () => {
-    if (wLog.length < 3) return null;
+    if (wLog.length < 3 || dl === 0) return null;
     const r = wLog.slice(-14);
     const days = (new Date(r[r.length - 1].d) - new Date(r[0].d)) / 864e5;
     if (days < 3) return null;
@@ -357,6 +378,7 @@ export default function App() {
   };
 
   const save = (k, v) => ST.set(k, v);
+
   const logW = () => {
     const w = parseFloat(inp.replace(",", ".")); if (isNaN(w) || w < 50 || w > 200) return;
     const nl = [...wLog, { d: new Date().toISOString(), w }];
@@ -375,11 +397,42 @@ export default function App() {
   };
   const addH2O = (delta = 1) => { const n = Math.max(0, water + delta); setWater(n); save("h2o", { d: new Date().toISOString(), v: n }); };
   const togC = (t) => {
-    const k = new Date().toISOString().split("T")[0];
+    const k = todayKey();
     const u = { ...comp, [k]: { ...comp[k], [t]: !(comp[k] || {})[t] } };
     setComp(u); save("cp", u);
   };
-  const tC = comp[new Date().toISOString().split("T")[0]] || {};
+  const tC = comp[todayKey()] || {};
+
+  const logTraining = () => {
+    const entry = { d: new Date().toISOString(), ci: tI, name: CIRCUITS[tI].name, deload };
+    const nl = [...tlog, entry];
+    setTlog(nl); save("tlog", nl);
+    if (!tC.t) togC("t");
+  };
+
+  const togglePrep = (key) => {
+    const nv = { ...prepDone, [key]: !prepDone[key] };
+    setPrepDone(nv);
+    save("prepd", { d: todayKey(), v: nv });
+  };
+
+  const saveSettings = () => {
+    const newCfg = { ...cfgEdit };
+    setCfg(newCfg); save("cfg", newCfg); setModal(null);
+  };
+
+  const requestNotif = async () => {
+    if (typeof Notification === "undefined") return;
+    const perm = await Notification.requestPermission();
+    const newCfg = { ...cfgEdit, notif: perm === "granted" };
+    setCfgEdit(newCfg);
+  };
+
+  const saveJournal = () => {
+    if (!jnlInp.trim()) return;
+    const nj = { ...jnl, [todayKey()]: jnlInp.trim() };
+    setJnl(nj); save("jnl", nj); setJnlInp(""); setModal(null);
+  };
 
   const meal = genMeal(mDay, wt);
   const prep = PREP(wt);
@@ -405,9 +458,9 @@ export default function App() {
   const Board = () => (
     <div>
       <div style={{ ...cs, background: `linear-gradient(135deg,${C.card},${C.accentDim}40)`, border: `1px solid ${C.accent}30`, textAlign: "center", padding: 22 }}>
-        <div style={{ fontSize: 10, letterSpacing: 4, color: C.accent, textTransform: "uppercase" }}>🎯 MISSION</div>
-        <div style={{ fontSize: 26, fontWeight: 200, marginTop: 6, lineHeight: 1.3 }}>21 Juin — 93kg</div>
-        <div style={{ fontSize: 12, color: C.mid, marginTop: 6 }}>Plus d'excuses.</div>
+        <div style={{ fontSize: 10, letterSpacing: 4, color: C.accent, textTransform: "uppercase" }}>Mission</div>
+        <div style={{ fontSize: 26, fontWeight: 200, marginTop: 6, lineHeight: 1.3 }}>{new Date(cfg.gd).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} — {G}kg</div>
+        <div style={{ fontSize: 12, color: C.mid, marginTop: 4 }}>Plus d'excuses.</div>
       </div>
 
       <div style={cs}>
@@ -419,12 +472,13 @@ export default function App() {
             <div style={{ fontSize: 9, color: C.dim, letterSpacing: 1 }}>PERDU</div>
           </div>
         </div>
-        {avg7 && <div style={{ fontSize: 11, color: C.cyan, marginTop: 5 }}>📊 Moy. 7j : {avg7} kg</div>}
-        <div style={{ width: "100%", height: 5, background: C.border, borderRadius: 3, marginTop: 8, overflow: "hidden" }}>
+        {avg7 && <div style={{ fontSize: 11, color: C.cyan, marginTop: 4 }}>Moy. 7j : {avg7} kg</div>}
+        {imc && <div style={{ fontSize: 11, color: imcColor, marginTop: 2 }}>IMC : {imc} — {imcLabel}</div>}
+        <div style={{ width: "100%", height: 5, background: C.border, borderRadius: 3, marginTop: 10, overflow: "hidden" }}>
           <div style={{ width: `${prog}%`, height: "100%", background: `linear-gradient(90deg,${C.accent},${C.green})`, borderRadius: 3, transition: "width .8s" }} />
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5, fontSize: 10, color: C.dim }}><span>{S}kg</span><span>{Math.round(prog)}%</span><span>{G}kg</span></div>
-        {pred() && <div style={{ fontSize: 11, color: C.orange, marginTop: 6 }}>📈 Projection 21 juin : {pred()} kg</div>}
+        {pred() && <div style={{ fontSize: 11, color: C.orange, marginTop: 6 }}>Projection {new Date(cfg.gd).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })} : {pred()} kg</div>}
         <button onClick={() => { setInp(""); setModal("wt"); }} style={{ ...bs, background: C.accent, color: "#000", width: "100%", marginTop: 10, padding: "12px 14px" }}>⚖️ Pesée</button>
       </div>
 
@@ -442,7 +496,7 @@ export default function App() {
 
       <div style={cs}>
         <div style={{ display: "flex", justifyContent: "space-between" }}>
-          <div style={ts}>Macros {tr ? "🏋️ Training" : "🛋️ Repos"}</div>
+          <div style={ts}>Macros {tr ? "Training" : "Repos"}</div>
           {deload && <span style={{ fontSize: 9, color: C.orange, fontWeight: 600 }}>DELOAD S{wkN}</span>}
         </div>
         <div style={{ textAlign: "center", marginBottom: 8 }}>
@@ -453,7 +507,6 @@ export default function App() {
           <div style={ps(C.orange)}><div style={{ fontSize: 15, fontWeight: 600 }}>{mac.f}g</div><div style={{ fontSize: 8, color: C.dim, marginTop: 2 }}>LIP</div></div>
           <div style={ps(C.green)}><div style={{ fontSize: 15, fontWeight: 600 }}>{mac.g}g</div><div style={{ fontSize: 8, color: C.dim, marginTop: 2 }}>GLUC</div></div>
         </div>
-        {!tr && <div style={{ fontSize: 10, color: C.mid, marginTop: 6, textAlign: "center" }}>Jour off : PDC×20 (−{Math.round(wt * 2)} kcal)</div>}
       </div>
 
       <div style={cs}>
@@ -478,7 +531,7 @@ export default function App() {
         </div>
         <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 2, color: C.dim, textTransform: "uppercase" }}>💧 Hydratation</div>
+            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 2, color: C.dim, textTransform: "uppercase" }}>Hydratation</div>
             <div style={{ fontSize: 12, fontWeight: 600, color: water >= 8 ? C.green : C.text }}>{water}/8 verres</div>
           </div>
           <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
@@ -487,7 +540,7 @@ export default function App() {
             ))}
           </div>
           <div style={{ display: "flex", gap: 6 }}>
-            <button onClick={() => addH2O(-1)} style={{ ...bs, flex: 1, background: "none", color: C.dim, border: `1px solid ${C.border}`, fontSize: 14 }}>−</button>
+            <button onClick={() => addH2O(-1)} style={{ ...bs, flex: 1, background: "none", color: C.dim, border: `1px solid ${C.border}`, fontSize: 14, padding: "8px" }}>−</button>
             <button onClick={() => addH2O(1)} style={{ ...bs, flex: 2, background: water >= 8 ? C.accentDim : C.surface, color: water >= 8 ? C.accent : C.text, border: `1px solid ${water >= 8 ? C.accent : C.border}` }}>+ 1 verre</button>
           </div>
         </div>
@@ -499,11 +552,30 @@ export default function App() {
           <button onClick={() => { setInp(""); setModal("wa"); }} style={{ ...bs, background: "none", color: C.accent, border: `1px solid ${C.accent}30`, padding: "5px 10px", fontSize: 9 }}>+ Mesure</button>
         </div>
         {waist.length > 0 ? (
-          <div>
-            <span style={{ fontSize: 24, fontWeight: 200 }}>{waist[waist.length - 1].v}</span><span style={{ color: C.dim }}> cm</span>
-            {waist.length > 1 && <span style={{ fontSize: 12, color: C.green, marginLeft: 8 }}>{(waist[0].v - waist[waist.length - 1].v) > 0 ? `−${(waist[0].v - waist[waist.length - 1].v).toFixed(1)}cm` : ""}</span>}
-          </div>
+          <>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <span style={{ fontSize: 24, fontWeight: 200 }}>{waist[waist.length - 1].v}</span><span style={{ color: C.dim }}>cm</span>
+              {waist.length > 1 && (waist[0].v - waist[waist.length - 1].v) > 0 && (
+                <span style={{ fontSize: 12, color: C.green }}>−{(waist[0].v - waist[waist.length - 1].v).toFixed(1)}cm</span>
+              )}
+            </div>
+            {waist.length >= 2 && <Sparkline data={waist} color={C.cyan} keyY="v" height={40} />}
+          </>
         ) : <div style={{ fontSize: 12, color: C.dim }}>Au nombril, debout, à jeun</div>}
+      </div>
+
+      <div style={cs}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <div style={ts}>Journal du jour</div>
+          <button onClick={() => { setJnlInp(jnl[todayKey()] || ""); setModal("journal"); }} style={{ ...bs, background: "none", color: C.accent, border: `1px solid ${C.accent}30`, padding: "5px 10px", fontSize: 9 }}>
+            {jnl[todayKey()] ? "Modifier" : "+ Note"}
+          </button>
+        </div>
+        {jnl[todayKey()] ? (
+          <div style={{ fontSize: 12, color: C.mid, lineHeight: 1.6 }}>{jnl[todayKey()]}</div>
+        ) : (
+          <div style={{ fontSize: 11, color: C.dim }}>Énergie, humeur, remarques du jour...</div>
+        )}
       </div>
 
       {dow() === 1 && <div style={{ ...cs, borderColor: C.orange + "40", background: C.orange + "06" }}>
@@ -513,7 +585,7 @@ export default function App() {
 
       {wLog.length > 0 && <div style={cs}>
         <div style={ts}>Courbe de poids</div>
-        {wLog.length >= 2 && <Sparkline data={wLog} color={C.accent} />}
+        {wLog.length >= 2 && <Sparkline data={wLog} color={C.accent} keyY="w" />}
         <div style={{ marginTop: 10 }}>
           {[...wLog].reverse().slice(0, 5).map((e, i, arr) => {
             const prev = arr[i + 1];
@@ -532,24 +604,19 @@ export default function App() {
       </div>}
 
       {slp.length > 0 && <div style={cs}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
           <div style={ts}>Sommeil (7 dernières nuits)</div>
-          <div style={{ fontSize: 11, color: C.mid }}>
-            moy. {(slp.slice(-7).reduce((a, s) => a + s.h, 0) / Math.min(7, slp.length)).toFixed(1)}h
-          </div>
+          <div style={{ fontSize: 11, color: C.mid }}>moy. {(slp.slice(-7).reduce((a, s) => a + s.h, 0) / Math.min(7, slp.length)).toFixed(1)}h</div>
         </div>
         <SleepBars data={slp} />
       </div>}
 
-      <div style={{ fontSize: 10, color: C.dim, textAlign: "center", padding: "10px 14px", lineHeight: 1.5, borderTop: `1px solid ${C.border}` }}>
-        💡 Le poids fluctue ±1.5kg/jour. Fie-toi à la moyenne 7j.
-      </div>
       <button onClick={() => {
-        const data = { poids: wLog, tailleDeCeinture: waist, sommeil: slp, exportDate: new Date().toISOString() };
+        const data = { poids: wLog, tailleDeCeinture: waist, sommeil: slp, compliance: comp, journal: jnl, seances: tlog, exportDate: new Date().toISOString() };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
         const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "coach-data.json"; a.click();
       }} style={{ ...bs, width: "100%", background: "none", color: C.dim, border: `1px solid ${C.border}`, marginBottom: 10, fontSize: 9 }}>
-        ⬇️ Exporter mes données
+        Exporter mes données
       </button>
     </div>
   );
@@ -561,14 +628,14 @@ export default function App() {
       <div>
         <div style={cs}>
           <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <div style={ts}>🎯 {meal.tr ? "Training" : "Repos"}</div>
-            {meal.ref && <span style={{ fontSize: 9, color: C.green, fontWeight: 700 }}>♻️ REFEED</span>}
+            <div style={ts}>{meal.tr ? "Training" : "Repos"}</div>
+            {meal.ref && <span style={{ fontSize: 9, color: C.green, fontWeight: 700 }}>REFEED</span>}
           </div>
           <div style={{ fontSize: 14, fontWeight: 600, textTransform: "capitalize" }}>{lb}</div>
           <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>{meal.m.cal}kcal | P:{meal.m.p}g | L:{meal.m.f}g | G:{meal.m.g}g</div>
           <MB d={meal.lunch} /><MB d={meal.dinner} /><MB d={meal.coll} />
           <div style={{ background: C.accentSoft, borderRadius: 9, padding: 10, marginTop: 12 }}>
-            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 2, marginBottom: 4 }}>📊 TOTAL</div>
+            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 2, marginBottom: 4 }}>TOTAL</div>
             <div style={{ display: "flex", gap: 8, fontSize: 10, color: C.mid }}>
               <span>P:{meal.total.p}g</span><span>L:{meal.total.l}g</span><span>G:{meal.total.c}g</span>
               <span style={{ color: C.accent, fontWeight: 700 }}>{meal.total.k}kcal</span>
@@ -589,7 +656,7 @@ export default function App() {
           <div style={{ fontSize: 10, color: C.cyan }}>🧂 Training : pincée de sel sur chaque repas + potassium (patate douce, épinards).</div>
         </div>}
         {(meal.d === 0 || meal.d === 6) && <div style={cs}>
-          <div style={ts}>🍳 Express weekend</div>
+          <div style={ts}>Express weekend</div>
           <div style={{ fontSize: 11, color: C.mid, lineHeight: 1.5 }}>Restaurant : viande/poisson grillé + légumes, pas de féculent, pas de dessert. Burger : sans pain, double steak, salade.</div>
         </div>}
       </div>
@@ -623,13 +690,13 @@ export default function App() {
 
           <div style={cs}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <div style={ts}>⚔️ {ci.tag}</div>
+              <div style={ts}>{ci.tag}</div>
               <span style={{ fontSize: 10, color: C.mid }}>~{ci.dur}'</span>
             </div>
             <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>{ci.name}</div>
             <div style={{ fontSize: 10, color: C.dim, marginBottom: 3 }}>{ci.rds} rounds{deload ? " (DELOAD)" : ""} • {ci.re}s exos • {ci.rc}s circuits</div>
             <div style={{ background: C.surface, borderRadius: 9, padding: 8, marginTop: 6, marginBottom: 6 }}>
-              <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 2, color: C.green, textTransform: "uppercase", marginBottom: 3 }}>🔥 ÉCHAUFFEMENT</div>
+              <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 2, color: C.green, textTransform: "uppercase", marginBottom: 3 }}>ÉCHAUFFEMENT</div>
               <div style={{ fontSize: 11, color: C.mid, lineHeight: 1.5 }}>{ci.wu}</div>
             </div>
             {ci.ex.map((e, i) => (
@@ -646,15 +713,19 @@ export default function App() {
               </div>
             ))}
             <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 10, marginTop: 6 }}>
-              <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 2, color: C.red, textTransform: "uppercase", marginBottom: 3 }}>🔥 FINISHER</div>
+              <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 2, color: C.red, textTransform: "uppercase", marginBottom: 3 }}>FINISHER</div>
               <div style={{ fontSize: 12 }}>{ci.fin}</div>
               <div style={{ fontSize: 10, color: C.accent, marginTop: 4 }}>~{ci.kcal} kcal</div>
             </div>
             <div style={{ background: C.surface, borderRadius: 9, padding: 8, marginTop: 8 }}>
-              <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 2, color: C.blue, textTransform: "uppercase", marginBottom: 3 }}>🧊 ÉTIREMENTS</div>
+              <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 2, color: C.blue, textTransform: "uppercase", marginBottom: 3 }}>ÉTIREMENTS</div>
               <div style={{ fontSize: 11, color: C.mid, lineHeight: 1.5 }}>{ci.cd}</div>
             </div>
           </div>
+
+          <button onClick={logTraining} style={{ ...bs, width: "100%", background: tC.t ? C.accentDim : C.accent, color: tC.t ? C.accent : "#000", border: tC.t ? `1px solid ${C.accent}` : "none", marginBottom: 6 }}>
+            {tC.t ? "✅ Séance enregistrée" : "Marquer séance terminée"}
+          </button>
 
           <button onClick={() => setAlt(!alt)} style={{ ...bs, width: "100%", background: "none", color: alt ? C.cyan : C.dim, border: `1px solid ${alt ? C.cyan : C.border}`, marginBottom: 10 }}>
             {alt ? "Masquer alternatives" : "Alternatives (équipement indispo)"}
@@ -672,35 +743,53 @@ export default function App() {
               }}>{c.tag}</button>
             ))}
           </div>
-          <div style={{ ...cs, marginTop: 10, borderColor: C.blue + "25" }}>
-            <div style={{ fontSize: 10, color: C.blue }}>💧 250ml toutes les 15 min. Minimum 1L sur la session.</div>
-          </div>
+
+          {tlog.length > 0 && <div style={{ ...cs, marginTop: 10 }}>
+            <div style={ts}>Historique séances</div>
+            {[...tlog].reverse().slice(0, 5).map((e, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: `1px solid ${C.border}`, fontSize: 11 }}>
+                <span style={{ color: C.dim }}>{fmtD(e.d)}</span>
+                <span style={{ color: e.deload ? C.orange : C.text }}>{e.name}{e.deload ? " (deload)" : ""}</span>
+              </div>
+            ))}
+          </div>}
         </>}
 
         {sub === "prep" && <div>
           <div style={cs}>
-            <div style={ts}>🛒 Meal Prep Dimanche (~2h)</div>
-            {[{ t: "Protéines", its: prep.prot, c: C.red }, { t: "Féculents", its: prep.carbs, c: C.orange }, { t: "Légumes", its: prep.veg, c: C.green }, { t: "Extras", its: prep.ext, c: C.cyan }].map(({ t, its, c: col }) => (
-              <div key={t} style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 2, color: col, textTransform: "uppercase", marginBottom: 4 }}>{t}</div>
-                {its.map((x, i) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: `1px solid ${C.border}`, fontSize: 11 }}>
-                    <span>{x.i}</span><span style={{ color: C.dim }}>{x.q}</span>
-                  </div>
-                ))}
+            <div style={ts}>Meal Prep Dimanche (~2h)</div>
+            {[{ t: "Protéines", its: prep.prot, c: C.red, prefix: "p" }, { t: "Féculents", its: prep.carbs, c: C.orange, prefix: "c" }, { t: "Légumes", its: prep.veg, c: C.green, prefix: "v" }, { t: "Extras", its: prep.ext, c: C.cyan, prefix: "e" }].map(({ t, its, c: col, prefix }) => (
+              <div key={t} style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 2, color: col, textTransform: "uppercase", marginBottom: 6 }}>{t}</div>
+                {its.map((x, i) => {
+                  const key = `${prefix}${i}`;
+                  return (
+                    <button key={i} onClick={() => togglePrep(key)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", padding: "8px 0", borderBottom: `1px solid ${C.border}`, fontSize: 11, background: "none", border: "none", borderBottom: `1px solid ${C.border}`, cursor: "pointer", textAlign: "left" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
+                        <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${prepDone[key] ? col : C.border}`, background: prepDone[key] ? col : "none", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          {prepDone[key] && <span style={{ color: "#000", fontSize: 10, fontWeight: 700 }}>✓</span>}
+                        </div>
+                        <span style={{ color: prepDone[key] ? C.dim : C.text, textDecoration: prepDone[key] ? "line-through" : "none" }}>{x.i}</span>
+                      </div>
+                      <span style={{ color: C.dim, fontSize: 10 }}>{x.q}</span>
+                    </button>
+                  );
+                })}
               </div>
             ))}
+            <div style={{ fontSize: 10, color: C.dim, textAlign: "center", fontStyle: "italic", marginTop: 8 }}>
+              {Object.values(prepDone).filter(Boolean).length}/{prep.prot.length + prep.carbs.length + prep.veg.length + prep.ext.length} items cochés
+            </div>
           </div>
-          <div style={{ fontSize: 10, color: C.dim, textAlign: "center", fontStyle: "italic" }}>Frigo 4j max. Au-delà, congèle.</div>
         </div>}
 
         {sub === "sched" && <div>
           <div style={cs}>
-            <div style={ts}>📅 Semaine {wkN} {deload ? "— DELOAD" : ""}</div>
+            <div style={ts}>Semaine {wkN} {deload ? "— DELOAD" : ""}</div>
             {[1, 2, 3, 4, 5, 6, 0].map(d => {
               const s = SCHED[d], now = dow() === d;
               return (
-                <div key={d} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: `1px solid ${C.border}`, background: now ? C.accentSoft : "none", borderRadius: now ? 6 : 0, paddingLeft: now ? 6 : 0, paddingRight: now ? 6 : 0 }}>
+                <div key={d} style={{ display: "flex", justifyContent: "space-between", padding: "7px 6px", borderBottom: `1px solid ${C.border}`, background: now ? C.accentSoft : "none", borderRadius: now ? 6 : 0 }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: s.type === "t" ? C.accent : C.dim, width: 50 }}>{["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"][d]}{now ? " ←" : ""}</span>
                   <span style={{ fontSize: 11, color: s.type === "t" ? C.text : C.dim, flex: 1, textAlign: "right" }}>{s.lb}</span>
                 </div>
@@ -708,11 +797,11 @@ export default function App() {
             })}
           </div>
           <div style={cs}>
-            <div style={ts}>🔄 Cycle</div>
+            <div style={ts}>Cycle</div>
             <div style={{ fontSize: 11, color: C.mid, lineHeight: 1.6 }}>S1-3 : charges normales. S4 : <span style={{ color: C.orange, fontWeight: 600 }}>DELOAD -40%</span>. Actuel : <span style={{ color: C.accent }}>S{wkN}</span></div>
           </div>
           <div style={cs}>
-            <div style={ts}>♻️ Refeed samedi</div>
+            <div style={ts}>Refeed samedi</div>
             <div style={{ fontSize: 11, color: C.mid, lineHeight: 1.6 }}>Samedi : PDC×26. Plus de glucides. Relance la leptine, évite le plateau. Ce n'est PAS un cheat day.</div>
           </div>
         </div>}
@@ -720,40 +809,213 @@ export default function App() {
     );
   };
 
+  // ═══ STATS ═══
+  const Stats = () => {
+    // Compliance 28 derniers jours
+    const days28 = Array.from({ length: 28 }, (_, i) => {
+      const d = new Date(); d.setDate(d.getDate() - (27 - i));
+      const k = d.toISOString().split("T")[0];
+      const c = comp[k] || {};
+      const score = (c.m ? 1 : 0) + (c.t ? 1 : 0) + (slp.some(s => new Date(s.d).toDateString() === d.toDateString()) ? 1 : 0);
+      return { k, d, score, isOff: d.getDay() === 0 };
+    });
+    const totalDone = days28.filter(d => d.score >= 2 || d.isOff).length;
+    const compliancePct = Math.round((totalDone / 28) * 100);
+
+    // Poids hebdo moyen
+    const weeklyW = Array.from({ length: 4 }, (_, wi) => {
+      const entries = wLog.filter(e => {
+        const diff = (Date.now() - new Date(e.d)) / 864e5;
+        return diff >= wi * 7 && diff < (wi + 1) * 7;
+      });
+      if (!entries.length) return null;
+      return { w: entries.reduce((a, e) => a + e.w, 0) / entries.length, label: `S-${wi === 0 ? "cette sem." : wi === 1 ? "sem. dern." : wi + " sem."}` };
+    }).reverse().filter(Boolean);
+
+    // Training stats
+    const trainCount = tlog.filter(e => (Date.now() - new Date(e.d)) / 864e5 < 28).length;
+    const avgSleep = slp.length ? (slp.slice(-14).reduce((a, s) => a + s.h, 0) / Math.min(14, slp.length)).toFixed(1) : null;
+
+    return (
+      <div>
+        <div style={cs}>
+          <div style={ts}>Compliance 28 jours</div>
+          <div style={{ textAlign: "center", marginBottom: 12 }}>
+            <span style={{ fontSize: 42, fontWeight: 200, color: compliancePct >= 80 ? C.green : compliancePct >= 60 ? C.orange : C.red }}>{compliancePct}%</span>
+            <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>{totalDone}/28 jours conformes</div>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {days28.map((d, i) => {
+              const col = d.isOff ? C.dim : d.score === 3 ? C.green : d.score === 2 ? C.accent : d.score === 1 ? C.orange : C.border;
+              return <div key={i} title={d.k} style={{ width: "calc(14.28% - 3.5px)", aspectRatio: "1", borderRadius: 4, background: col, opacity: d.score === 0 && !d.isOff ? 0.4 : 1 }} />;
+            })}
+          </div>
+          <div style={{ display: "flex", gap: 12, marginTop: 8, fontSize: 9, color: C.dim }}>
+            <span><span style={{ color: C.green }}>■</span> Parfait</span>
+            <span><span style={{ color: C.accent }}>■</span> Partiel</span>
+            <span><span style={{ color: C.orange }}>■</span> 1/3</span>
+            <span><span style={{ color: C.dim }}>■</span> Off/manqué</span>
+          </div>
+        </div>
+
+        <div style={cs}>
+          <div style={ts}>Résumé</div>
+          <div style={{ display: "flex", gap: 5 }}>
+            {[
+              { v: `${lost > 0 ? lost.toFixed(1) : 0} kg`, l: "Perdus", c: C.green },
+              { v: trainCount, l: "Séances/28j", c: C.accent },
+              { v: avgSleep ? `${avgSleep}h` : "—", l: "Sommeil moy.", c: avgSleep && parseFloat(avgSleep) >= 7.5 ? C.green : C.orange },
+            ].map((x, i) => (
+              <div key={i} style={{ flex: 1, textAlign: "center", background: C.surface, borderRadius: 10, padding: "10px 4px" }}>
+                <div style={{ fontSize: 20, fontWeight: 300, color: x.c }}>{x.v}</div>
+                <div style={{ fontSize: 8, color: C.dim, marginTop: 3 }}>{x.l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {weeklyW.length >= 2 && <div style={cs}>
+          <div style={ts}>Poids hebdomadaire</div>
+          <Sparkline data={weeklyW.map(w => ({ w: w.w }))} color={C.accent} keyY="w" />
+          <div style={{ marginTop: 8 }}>
+            {weeklyW.map((w, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: `1px solid ${C.border}`, fontSize: 11 }}>
+                <span style={{ color: C.dim }}>{w.label}</span>
+                <span style={{ fontWeight: 600 }}>{w.w.toFixed(1)} kg</span>
+              </div>
+            ))}
+          </div>
+        </div>}
+
+        {tlog.length > 0 && <div style={cs}>
+          <div style={ts}>Séances par circuit</div>
+          {CIRCUITS.map((c, ci) => {
+            const cnt = tlog.filter(e => e.ci === ci).length;
+            const pct = tlog.length ? (cnt / tlog.length) * 100 : 0;
+            return (
+              <div key={ci} style={{ marginBottom: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 3 }}>
+                  <span style={{ color: C.mid }}>{c.tag}</span>
+                  <span style={{ color: C.dim }}>{cnt}x</span>
+                </div>
+                <div style={{ height: 4, background: C.border, borderRadius: 2, overflow: "hidden" }}>
+                  <div style={{ width: `${pct}%`, height: "100%", background: C.accent, borderRadius: 2 }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>}
+
+        {Object.keys(jnl).length > 0 && <div style={cs}>
+          <div style={ts}>Journal récent</div>
+          {Object.entries(jnl).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 3).map(([k, v]) => (
+            <div key={k} style={{ paddingBottom: 10, marginBottom: 10, borderBottom: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 9, color: C.dim, marginBottom: 3 }}>{new Date(k).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "short" })}</div>
+              <div style={{ fontSize: 12, color: C.mid, lineHeight: 1.5 }}>{v}</div>
+            </div>
+          ))}
+        </div>}
+      </div>
+    );
+  };
+
+  // ═══ MODALS ═══
+  const renderModal = () => {
+    if (!modal) return null;
+
+    if (modal === "settings") return (
+      <div onClick={() => setModal(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.88)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 200 }}>
+        <div onClick={e => e.stopPropagation()} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: "18px 18px 0 0", padding: 22, width: "100%", maxWidth: 430, paddingBottom: 36 }}>
+          <div style={{ ...ts, marginBottom: 16 }}>Paramètres</div>
+
+          {[
+            { label: "Poids de départ (kg)", key: "sw", step: "0.1", placeholder: "111" },
+            { label: "Poids objectif (kg)", key: "gw", step: "0.1", placeholder: "93" },
+            { label: "Taille (cm)", key: "ht", step: "1", placeholder: "180" },
+          ].map(({ label, key, step, placeholder }) => (
+            <div key={key} style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 10, color: C.dim, marginBottom: 4 }}>{label}</div>
+              <input type="number" step={step} placeholder={placeholder} value={cfgEdit[key]} onChange={e => setCfgEdit({ ...cfgEdit, [key]: parseFloat(e.target.value) || 0 })}
+                style={{ width: "100%", padding: "10px 12px", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, color: C.text, fontSize: 16, outline: "none", boxSizing: "border-box" }} />
+            </div>
+          ))}
+
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 10, color: C.dim, marginBottom: 4 }}>Date objectif</div>
+            <input type="date" value={cfgEdit.gd} onChange={e => setCfgEdit({ ...cfgEdit, gd: e.target.value })}
+              style={{ width: "100%", padding: "10px 12px", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, color: C.text, fontSize: 14, outline: "none", boxSizing: "border-box", colorScheme: "dark" }} />
+          </div>
+
+          <button onClick={requestNotif} style={{ ...bs, width: "100%", background: cfgEdit.notif ? C.accentDim : C.surface, color: cfgEdit.notif ? C.accent : C.dim, border: `1px solid ${cfgEdit.notif ? C.accent : C.border}`, marginBottom: 12 }}>
+            {cfgEdit.notif ? "🔔 Notifications activées" : "Activer les notifications"}
+          </button>
+
+          <button onClick={saveSettings} style={{ ...bs, background: C.accent, color: "#000", width: "100%", padding: "12px 14px", marginBottom: 6 }}>Enregistrer</button>
+          <button onClick={() => setModal(null)} style={{ ...bs, background: "none", color: C.dim, border: `1px solid ${C.border}`, width: "100%", padding: "10px 14px" }}>Annuler</button>
+        </div>
+      </div>
+    );
+
+    if (modal === "journal") return (
+      <div onClick={() => setModal(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.88)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 20 }}>
+        <div onClick={e => e.stopPropagation()} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 18, padding: 22, width: "100%", maxWidth: 320 }}>
+          <div style={ts}>Journal — {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric" })}</div>
+          <textarea value={jnlInp} onChange={e => setJnlInp(e.target.value)} placeholder="Énergie, humeur, ressenti séance, remarques..." autoFocus rows={4}
+            style={{ width: "100%", padding: 12, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, color: C.text, fontSize: 13, outline: "none", resize: "none", lineHeight: 1.5, boxSizing: "border-box" }} />
+          <button onClick={saveJournal} style={{ ...bs, background: C.accent, color: "#000", width: "100%", marginTop: 8, padding: "11px 14px" }}>Enregistrer</button>
+          <button onClick={() => setModal(null)} style={{ ...bs, background: "none", color: C.dim, border: `1px solid ${C.border}`, width: "100%", marginTop: 6, padding: "9px 14px" }}>Annuler</button>
+        </div>
+      </div>
+    );
+
+    return (
+      <div onClick={() => setModal(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 20 }}>
+        <div onClick={e => e.stopPropagation()} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 18, padding: 22, width: "100%", maxWidth: 320 }}>
+          <div style={ts}>{modal === "wt" ? "⚖️ Pesée" : modal === "wa" ? "📏 Tour de taille" : "😴 Sommeil"}</div>
+          <div style={{ fontSize: 10, color: C.dim, marginBottom: 8 }}>
+            {modal === "wt" ? "Matin, à jeun, après toilettes." : modal === "wa" ? "Au nombril, debout, expiré." : "Heures dormies cette nuit."}
+          </div>
+          <input type="number" step="0.1" placeholder={modal === "wt" ? "108.5" : modal === "wa" ? "102" : "7.5"} value={inp} onChange={e => setInp(e.target.value)} autoFocus
+            style={{ width: "100%", padding: 12, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, color: C.text, fontSize: 20, fontWeight: 300, textAlign: "center", outline: "none", boxSizing: "border-box" }} />
+          <button onClick={() => modal === "wt" ? logW() : modal === "wa" ? logWa() : logSl()} style={{ ...bs, background: C.accent, color: "#000", width: "100%", marginTop: 8, padding: "11px 14px" }}>Enregistrer</button>
+          <button onClick={() => setModal(null)} style={{ ...bs, background: "none", color: C.dim, border: `1px solid ${C.border}`, width: "100%", marginTop: 6, padding: "9px 14px" }}>Annuler</button>
+        </div>
+      </div>
+    );
+  };
+
+  const TABS = [
+    { id: "board", ic: "📊", lb: "Board" },
+    { id: "meals", ic: "🥗", lb: "Repas" },
+    { id: "training", ic: "⚔️", lb: "Training" },
+    { id: "stats", ic: "📈", lb: "Stats" },
+  ];
+
   return (
     <div style={{ background: C.bg, color: C.text, fontFamily: "'SF Pro Text',-apple-system,BlinkMacSystemFont,sans-serif", minHeight: "100vh", maxWidth: 430, margin: "0 auto", paddingBottom: 82, WebkitFontSmoothing: "antialiased" }}>
       <div style={{ padding: "14px 16px 8px", borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, background: "rgba(8,8,10,.92)", backdropFilter: "blur(20px)", zIndex: 50, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h1 style={{ fontSize: 11, fontWeight: 800, letterSpacing: 5, color: C.accent, textTransform: "uppercase", margin: 0 }}>Coach Militaire</h1>
-        <span style={{ fontSize: 9, color: C.dim }}>S{wkN}{deload ? " DELOAD" : ""}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 9, color: C.dim }}>S{wkN}{deload ? " DELOAD" : ""}</span>
+          <button onClick={() => { setCfgEdit(cfg); setModal("settings"); }} style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 16, padding: 0, lineHeight: 1 }}>⚙️</button>
+        </div>
       </div>
       <div style={{ padding: "12px 14px" }}>
         {tab === "board" && <Board />}
         {tab === "meals" && <Meals />}
         {tab === "training" && <Training />}
+        {tab === "stats" && <Stats />}
       </div>
       <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, display: "flex", background: "rgba(8,8,10,.94)", backdropFilter: "blur(20px)", borderTop: `1px solid ${C.border}`, zIndex: 100 }}>
-        {[{ id: "board", ic: "📊", lb: "Board" }, { id: "meals", ic: "🥗", lb: "Repas" }, { id: "training", ic: "⚔️", lb: "Training" }].map(t => (
+        {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
-            flex: 1, padding: "9px 0 16px", textAlign: "center", fontSize: 9, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase",
+            flex: 1, padding: "9px 0 16px", textAlign: "center", fontSize: 8, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase",
             color: tab === t.id ? C.accent : C.dim, background: "none", border: "none", cursor: "pointer",
             borderTop: tab === t.id ? `2px solid ${C.accent}` : "2px solid transparent",
-          }}>{t.ic} {t.lb}</button>
+          }}>{t.ic}<br />{t.lb}</button>
         ))}
       </div>
-      {modal && (
-        <div onClick={() => setModal(null)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 20 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 18, padding: 22, width: "100%", maxWidth: 320 }}>
-            <div style={ts}>{modal === "wt" ? "⚖️ Pesée" : modal === "wa" ? "📏 Tour de taille" : "😴 Sommeil"}</div>
-            <div style={{ fontSize: 10, color: C.dim, marginBottom: 5 }}>
-              {modal === "wt" ? "Matin, à jeun, après toilettes." : modal === "wa" ? "Au nombril, debout, expiré." : "Heures dormies."}
-            </div>
-            <input type="number" step="0.1" placeholder={modal === "wt" ? "108.5" : modal === "wa" ? "102" : "7.5"} value={inp} onChange={e => setInp(e.target.value)} autoFocus
-              style={{ width: "100%", padding: 12, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, color: C.text, fontSize: 20, fontWeight: 300, textAlign: "center", outline: "none", boxSizing: "border-box" }} />
-            <button onClick={() => modal === "wt" ? logW() : modal === "wa" ? logWa() : logSl()} style={{ ...bs, background: C.accent, color: "#000", width: "100%", marginTop: 8, padding: "11px 14px" }}>Enregistrer</button>
-            <button onClick={() => setModal(null)} style={{ ...bs, background: "none", color: C.dim, border: `1px solid ${C.border}`, width: "100%", marginTop: 6, padding: "9px 14px" }}>Annuler</button>
-          </div>
-        </div>
-      )}
+      {renderModal()}
     </div>
   );
 }
