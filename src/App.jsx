@@ -89,7 +89,7 @@ const WHT = { n: "Whey post-training", p: 34, l: 1, c: 3, k: 157, fb: 0 };
 const WHO = { n: "Whey Isolate", p: 25, l: 1, c: 2, k: 117, fb: 0 };
 
 const sR = (s) => { let x = s; return () => { x = (x * 16807) % 2147483647; return (x - 1) / 2147483646; }; };
-const dS = (o = 0) => { const d = new Date(); d.setDate(d.getDate() + o); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); };
+const dS = (o = 0) => { const d = new Date(); d.setDate(d.getDate() + o); let h = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); h = Math.imul(h ^ (h >>> 16), 0x45d9f3b); h = Math.imul(h ^ (h >>> 16), 0x45d9f3b); h = (h ^ (h >>> 16)) >>> 0; return h || 1; };
 const pk = (a, r, ex = -1) => { let i; do { i = Math.floor(r() * a.length); } while (i === ex && a.length > 1); return { it: a[i], ix: i }; };
 
 const genMeal = (off, pdc) => {
@@ -299,7 +299,7 @@ const ps = (col) => ({ flex: 1, textAlign: "center", padding: "7px 2px", borderR
 
 // ─── APP ───
 export default function App() {
-  const [cfg, setCfg] = useState(() => ST.get("cfg") || { sw: 111, gw: 93, gd: "2026-06-21", ht: 180, wgt: 85, notif: false });
+  const [cfg, setCfg] = useState(() => ({ sw: 111, gw: 93, gd: "2026-06-21", ht: 180, wgt: 85, notif: false, ...(ST.get("cfg") || {}) }));
   const [tab, setTab] = useState("board");
   const [wt, setWt] = useState(() => ST.get("wt") || 111);
   const [wLog, setWLog] = useState(() => ST.get("wl") || []);
