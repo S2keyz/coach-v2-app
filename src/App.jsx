@@ -18,6 +18,7 @@ const todayStr = () => new Date().toLocaleDateString("fr-FR", { weekday: "long",
 const fmtD = (d) => new Date(d).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 const isToday = (d) => new Date(d).toDateString() === new Date().toDateString();
 const todayKey = () => new Date().toISOString().split("T")[0];
+const weekKey = () => { const d = new Date(); const jan1 = new Date(d.getFullYear(), 0, 1); const w = Math.ceil(((d - jan1) / 864e5 + jan1.getDay() + 1) / 7); return `${d.getFullYear()}-W${w}`; };
 
 const SCHED = {
   1: { type: "t", ci: 0, lb: "Jour A — Full Body" },
@@ -298,7 +299,7 @@ const ps = (col) => ({ flex: 1, textAlign: "center", padding: "7px 2px", borderR
 
 // ─── APP ───
 export default function App() {
-  const [cfg, setCfg] = useState(() => ST.get("cfg") || { sw: 111, gw: 93, gd: "2026-06-21", ht: 180, notif: false });
+  const [cfg, setCfg] = useState(() => ST.get("cfg") || { sw: 111, gw: 93, gd: "2026-06-21", ht: 180, wgt: 85, notif: false });
   const [tab, setTab] = useState("board");
   const [wt, setWt] = useState(() => ST.get("wt") || 111);
   const [wLog, setWLog] = useState(() => ST.get("wl") || []);
@@ -316,7 +317,7 @@ export default function App() {
   const [tlog, setTlog] = useState(() => ST.get("tlog") || []);
   const [prepDone, setPrepDone] = useState(() => {
     const pd = ST.get("prepd");
-    return pd?.d === todayKey() ? pd.v : {};
+    return pd?.w === weekKey() ? pd.v : {};
   });
   const [cfgEdit, setCfgEdit] = useState(cfg);
   const [jnlInp, setJnlInp] = useState("");
@@ -403,6 +404,10 @@ export default function App() {
   };
   const tC = comp[todayKey()] || {};
 
+  const delW = (i) => { const nl = wLog.filter((_, j) => j !== i); setWLog(nl); save("wl", nl); if (nl.length) { setWt(nl[nl.length-1].w); save("wt", nl[nl.length-1].w); } };
+  const delWa = (i) => { const nl = waist.filter((_, j) => j !== i); setWaist(nl); save("wa", nl); };
+  const delSl = (i) => { const nl = slp.filter((_, j) => j !== i); setSlp(nl); save("sl", nl); };
+
   const logTraining = () => {
     const entry = { d: new Date().toISOString(), ci: tI, name: CIRCUITS[tI].name, deload };
     const nl = [...tlog, entry];
@@ -413,7 +418,7 @@ export default function App() {
   const togglePrep = (key) => {
     const nv = { ...prepDone, [key]: !prepDone[key] };
     setPrepDone(nv);
-    save("prepd", { d: todayKey(), v: nv });
+    save("prepd", { w: weekKey(), v: nv });
   };
 
   const saveSettings = () => {
@@ -462,6 +467,12 @@ export default function App() {
         <div style={{ fontSize: 26, fontWeight: 200, marginTop: 6, lineHeight: 1.3 }}>{new Date(cfg.gd).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} — {G}kg</div>
         <div style={{ fontSize: 12, color: C.mid, marginTop: 4 }}>Plus d'excuses.</div>
       </div>
+
+      {wt <= G && <div style={{ ...cs, background: `linear-gradient(135deg,${C.accentDim},${C.green}15)`, border: `1px solid ${C.green}50`, textAlign: "center", padding: 20 }}>
+        <div style={{ fontSize: 28, marginBottom: 6 }}>🏆</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: C.green }}>OBJECTIF ATTEINT !</div>
+        <div style={{ fontSize: 12, color: C.mid, marginTop: 4 }}>{wt} kg — {(S - wt).toFixed(1)} kg perdus. Mission accomplie.</div>
+      </div>}
 
       <div style={cs}>
         <div style={ts}>Poids</div>
@@ -558,8 +569,23 @@ export default function App() {
               {waist.length > 1 && (waist[0].v - waist[waist.length - 1].v) > 0 && (
                 <span style={{ fontSize: 12, color: C.green }}>−{(waist[0].v - waist[waist.length - 1].v).toFixed(1)}cm</span>
               )}
+              {cfg.wgt > 0 && <span style={{ fontSize: 11, color: C.dim }}>/ obj. {cfg.wgt}cm</span>}
             </div>
             {waist.length >= 2 && <Sparkline data={waist} color={C.cyan} keyY="v" height={40} />}
+            <div style={{ marginTop: 6 }}>
+              {[...waist].reverse().slice(0, 3).map((w, i) => {
+                const realIdx = waist.length - 1 - i;
+                return (
+                  <div key={realIdx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", fontSize: 11 }}>
+                    <span style={{ color: C.dim }}>{fmtD(w.d)}</span>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span>{w.v} cm</span>
+                      <button onClick={() => delWa(realIdx)} style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 14, padding: "0 2px" }}>×</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </>
         ) : <div style={{ fontSize: 12, color: C.dim }}>Au nombril, debout, à jeun</div>}
       </div>
@@ -587,15 +613,16 @@ export default function App() {
         <div style={ts}>Courbe de poids</div>
         {wLog.length >= 2 && <Sparkline data={wLog} color={C.accent} keyY="w" />}
         <div style={{ marginTop: 10 }}>
-          {[...wLog].reverse().slice(0, 5).map((e, i, arr) => {
+          {[...wLog].map((e, realIdx) => ({ e, realIdx })).reverse().slice(0, 5).map(({ e, realIdx }, i, arr) => {
             const prev = arr[i + 1];
-            const diff = prev ? (e.w - prev.w).toFixed(1) : null;
+            const diff = prev ? (e.w - prev.e.w).toFixed(1) : null;
             return (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: `1px solid ${C.border}`, fontSize: 12 }}>
+              <div key={realIdx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: `1px solid ${C.border}`, fontSize: 12 }}>
                 <span style={{ color: C.dim }}>{fmtD(e.d)}</span>
                 <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                   {diff !== null && <span style={{ fontSize: 10, color: parseFloat(diff) < 0 ? C.green : parseFloat(diff) > 0 ? C.red : C.dim }}>{parseFloat(diff) > 0 ? `+${diff}` : diff} kg</span>}
                   <span style={{ fontWeight: 600 }}>{e.w} kg</span>
+                  <button onClick={() => delW(realIdx)} style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 14, padding: "0 2px", lineHeight: 1 }}>×</button>
                 </div>
               </div>
             );
@@ -609,6 +636,20 @@ export default function App() {
           <div style={{ fontSize: 11, color: C.mid }}>moy. {(slp.slice(-7).reduce((a, s) => a + s.h, 0) / Math.min(7, slp.length)).toFixed(1)}h</div>
         </div>
         <SleepBars data={slp} />
+        <div style={{ marginTop: 8 }}>
+          {[...slp].reverse().slice(0, 3).map((s, i, arr) => {
+            const realIdx = slp.length - 1 - i;
+            return (
+              <div key={realIdx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", fontSize: 11 }}>
+                <span style={{ color: C.dim }}>{fmtD(s.d)}</span>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <span style={{ color: s.h >= 7.5 ? C.green : s.h >= 6 ? C.orange : C.red }}>{s.h}h</span>
+                  <button onClick={() => delSl(realIdx)} style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 14, padding: "0 2px" }}>×</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>}
 
       <button onClick={() => {
@@ -764,7 +805,7 @@ export default function App() {
                 {its.map((x, i) => {
                   const key = `${prefix}${i}`;
                   return (
-                    <button key={i} onClick={() => togglePrep(key)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", padding: "8px 0", borderBottom: `1px solid ${C.border}`, fontSize: 11, background: "none", border: "none", borderBottom: `1px solid ${C.border}`, cursor: "pointer", textAlign: "left" }}>
+                    <button key={i} onClick={() => togglePrep(key)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", padding: "8px 0", borderTop: "none", borderLeft: "none", borderRight: "none", borderBottom: `1px solid ${C.border}`, fontSize: 11, background: "none", cursor: "pointer", textAlign: "left" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
                         <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${prepDone[key] ? col : C.border}`, background: prepDone[key] ? col : "none", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                           {prepDone[key] && <span style={{ color: "#000", fontSize: 10, fontWeight: 700 }}>✓</span>}
@@ -932,6 +973,7 @@ export default function App() {
             { label: "Poids de départ (kg)", key: "sw", step: "0.1", placeholder: "111" },
             { label: "Poids objectif (kg)", key: "gw", step: "0.1", placeholder: "93" },
             { label: "Taille (cm)", key: "ht", step: "1", placeholder: "180" },
+            { label: "Tour de taille objectif (cm)", key: "wgt", step: "1", placeholder: "85" },
           ].map(({ label, key, step, placeholder }) => (
             <div key={key} style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 10, color: C.dim, marginBottom: 4 }}>{label}</div>
@@ -951,7 +993,12 @@ export default function App() {
           </button>
 
           <button onClick={saveSettings} style={{ ...bs, background: C.accent, color: "#000", width: "100%", padding: "12px 14px", marginBottom: 6 }}>Enregistrer</button>
-          <button onClick={() => setModal(null)} style={{ ...bs, background: "none", color: C.dim, border: `1px solid ${C.border}`, width: "100%", padding: "10px 14px" }}>Annuler</button>
+          <button onClick={() => setModal(null)} style={{ ...bs, background: "none", color: C.dim, border: `1px solid ${C.border}`, width: "100%", padding: "10px 14px", marginBottom: 6 }}>Annuler</button>
+          <button onClick={() => {
+            if (!window.confirm("Supprimer toutes les données ? Cette action est irréversible.")) return;
+            ["wt","wl","wa","cp","h2o","sl","jnl","tlog","prepd","start","cfg"].forEach(k => localStorage.removeItem("cm2_" + k));
+            window.location.reload();
+          }} style={{ ...bs, background: "none", color: C.red, border: `1px solid ${C.red}30`, width: "100%", padding: "10px 14px", fontSize: 9 }}>Réinitialiser toutes les données</button>
         </div>
       </div>
     );
