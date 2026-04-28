@@ -188,29 +188,77 @@ const LISS = [
   "Vélo léger 50' — cadence basse, résistance moyenne",
 ];
 
-const PREP = (pdc) => ({
-  prot: [
-    { i: "Blanc de poulet", q: "1.2 kg", p: "Four 200°C 25 min, tranché" },
-    { i: "Dinde", q: "750 g", p: "Poêlée, refroidie" },
-    { i: "Œufs", q: "24 pcs", p: "12 durs + reste omelettes" },
-  ],
-  carbs: [
-    { i: "Riz basmati", q: "800 g cru", p: "Cuit, portions de " + Math.round(pdc * 0.5) + "g" },
-    { i: "Patate douce", q: "1.5 kg", p: "Cubes rôtis au four" },
-    { i: "Lentilles corail", q: "500 g", p: "Cuites, en portions" },
-  ],
-  veg: [
-    { i: "Brocoli", q: "1 kg", p: "Fleurettes blanchies 3'" },
-    { i: "Haricots verts", q: "800 g", p: "Blanchis ou surgelés" },
-    { i: "Épinards", q: "400 g", p: "Lavés" },
-    { i: "Courgettes", q: "800 g", p: "Tranchées crues" },
-  ],
-  ext: [
-    { i: "Huile d'olive", q: "1 bout." }, { i: "Avocats", q: "4 pcs" },
-    { i: "Amandes nature", q: "200 g" }, { i: "Whey", q: "500 g min" },
-    { i: "Fromage blanc 0%", q: "4×150g" }, { i: "Sel, poivre, ail, herbes, curry, citrons", q: "" },
-  ],
-});
+const COOK_NOTES = {
+  "Blanc de poulet grillé": "Four 200°C 25 min, tranché",
+  "Escalope de dinde": "Poêlée, refroidie",
+  "Poulet rôti herbes": "Four 200°C 30 min",
+  "Dinde curry doux": "Mijotée, en portions",
+  "Steak de bœuf 5% MG": "À cuire le jour même",
+  "Steak haché 5%": "À cuire le jour même",
+  "Rôti de porc maigre": "Four 180°C 45 min",
+  "Thon frais grillé": "À cuire le jour même ou congeler",
+  "Crevettes sautées ail": "À cuire le jour même",
+  "Cabillaud poêlé citron": "À cuire le jour même ou congeler",
+  "Saumon au four": "Four 180°C 15 min ou congeler",
+  "Truite citronnée": "À cuire le jour même ou congeler",
+  "Riz basmati (cru)": "Cuit en batch, portions frigo",
+  "Riz complet (cru)": "Cuit en batch, portions frigo",
+  "Quinoa (cru)": "Cuit en batch, portions frigo",
+  "Lentilles corail (crues)": "Cuites, en portions",
+  "Pois chiches (conserve)": "Égouttés, prêts à l'emploi",
+  "Patate douce (crue)": "Cubes rôtis au four 200°C",
+  "Pommes de terre (crues)": "Cubes rôtis ou vapeur",
+  "Brocoli vapeur": "Fleurettes blanchies 3'",
+  "Haricots verts": "Blanchis 4' ou surgelés",
+  "Épinards sautés": "Lavés, crus (sautés le jour J)",
+  "Courgettes grillées": "Tranches crues, grillées le jour J",
+  "Chou-fleur rôti": "Rôti four 200°C 25 min",
+  "Poivrons grillés": "Grillés, épluchés",
+  "Asperges vapeur": "Blanchies 5'",
+  "Salade romaine concombre": "Lavée, essorée",
+};
+
+const genWeekPrep = (pdc) => {
+  const protSet = new Set([...LP, ...DP].map(x => x.n));
+  const carbSet = new Set(CF.map(x => x.n));
+  const vegSet = new Set(VG.map(x => x.n));
+
+  const agg = {};
+  let eggCount = 0;
+
+  Array.from({ length: 7 }, (_, i) => genMeal(i, pdc)).forEach(meal => {
+    [...meal.lunch.its, ...meal.dinner.its, ...meal.coll.its].forEach(item => {
+      if (item.n === "Huile d'olive") return;
+      // Count eggs from omelettes
+      const eggMatch = item.n.match(/(\d+) œufs/);
+      if (eggMatch) { eggCount += parseInt(eggMatch[1]); return; }
+      if (!agg[item.n]) agg[item.n] = { g: 0, count: 0 };
+      agg[item.n].g += item.g || 0;
+      agg[item.n].count += 1;
+    });
+  });
+
+  const prot = [], carbs = [], veg = [], ext = [];
+
+  if (eggCount > 0) prot.push({ i: `Œufs (omelettes)`, q: `${eggCount} œufs`, p: "Omelettes le jour J" });
+
+  Object.entries(agg).forEach(([name, data]) => {
+    const q = data.g > 0 ? `${data.g}g` : `${data.count}×`;
+    const p = COOK_NOTES[name] || "";
+    const entry = { i: name, q, p };
+    if (protSet.has(name)) prot.push(entry);
+    else if (carbSet.has(name)) carbs.push(entry);
+    else if (vegSet.has(name)) veg.push(entry);
+    else ext.push(entry);
+  });
+
+  ext.push(
+    { i: "Huile d'olive", q: "~100ml", p: "10-15ml par repas" },
+    { i: "Sel, poivre, ail, herbes, citrons", q: "stock", p: "" },
+  );
+
+  return { prot, carbs, veg, ext };
+};
 
 const getWeek = () => { const s = ST.get("start") || Date.now(); return Math.floor((Date.now() - s) / (7 * 864e5)) + 1; };
 const isDeload = () => getWeek() % 4 === 0;
@@ -440,7 +488,7 @@ export default function App() {
   };
 
   const meal = genMeal(mDay, wt);
-  const prep = PREP(wt);
+  const prep = genWeekPrep(wt);
 
   const MB = ({ d }) => (
     <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 10, marginTop: 10 }}>
@@ -798,21 +846,27 @@ export default function App() {
 
         {sub === "prep" && <div>
           <div style={cs}>
-            <div style={ts}>Meal Prep Dimanche (~2h)</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <div style={{ ...ts, marginBottom: 0 }}>Meal Prep — 7 prochains jours</div>
+              <span style={{ fontSize: 9, color: C.dim }}>dim. ~2h</span>
+            </div>
             {[{ t: "Protéines", its: prep.prot, c: C.red, prefix: "p" }, { t: "Féculents", its: prep.carbs, c: C.orange, prefix: "c" }, { t: "Légumes", its: prep.veg, c: C.green, prefix: "v" }, { t: "Extras", its: prep.ext, c: C.cyan, prefix: "e" }].map(({ t, its, c: col, prefix }) => (
               <div key={t} style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 2, color: col, textTransform: "uppercase", marginBottom: 6 }}>{t}</div>
                 {its.map((x, i) => {
                   const key = `${prefix}${i}`;
                   return (
-                    <button key={i} onClick={() => togglePrep(key)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", padding: "8px 0", borderTop: "none", borderLeft: "none", borderRight: "none", borderBottom: `1px solid ${C.border}`, fontSize: 11, background: "none", cursor: "pointer", textAlign: "left" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
-                        <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${prepDone[key] ? col : C.border}`, background: prepDone[key] ? col : "none", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <button key={i} onClick={() => togglePrep(key)} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", width: "100%", padding: "8px 0", borderTop: "none", borderLeft: "none", borderRight: "none", borderBottom: `1px solid ${C.border}`, fontSize: 11, background: "none", cursor: "pointer", textAlign: "left" }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 8, flex: 1 }}>
+                        <div style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${prepDone[key] ? col : C.border}`, background: prepDone[key] ? col : "none", flexShrink: 0, marginTop: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
                           {prepDone[key] && <span style={{ color: "#000", fontSize: 10, fontWeight: 700 }}>✓</span>}
                         </div>
-                        <span style={{ color: prepDone[key] ? C.dim : C.text, textDecoration: prepDone[key] ? "line-through" : "none" }}>{x.i}</span>
+                        <div>
+                          <div style={{ color: prepDone[key] ? C.dim : C.text, textDecoration: prepDone[key] ? "line-through" : "none" }}>{x.i}</div>
+                          {x.p && <div style={{ fontSize: 9, color: C.dim, marginTop: 1 }}>{x.p}</div>}
+                        </div>
                       </div>
-                      <span style={{ color: C.dim, fontSize: 10 }}>{x.q}</span>
+                      <span style={{ color: col, fontSize: 10, fontWeight: 600, flexShrink: 0, marginLeft: 8 }}>{x.q}</span>
                     </button>
                   );
                 })}
